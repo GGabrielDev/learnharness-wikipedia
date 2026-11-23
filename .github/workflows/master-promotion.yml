@@ -1,0 +1,41 @@
+name: Master promotion policy
+
+on:
+  pull_request_target:
+    branches: [master]
+    types: [opened, reopened, synchronize, edited, ready_for_review, closed]
+
+permissions:
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: master-promotion-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+
+jobs:
+  authorize-promotion:
+    if: github.event.action != 'closed' || !github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    steps:
+      # Run the base branch's trusted workflow. Never check out or execute PR code.
+      - name: Publish required promotion status
+        run: |
+          set -euo pipefail
+          # Statuses are tied to commits, not PRs. Fail closed when an
+          # ineligible open PR to master shares the same head commit.
+          eligible=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=open&base=master&per_page=100" \
+            | jq -r --arg sha "$HEAD_SHA" --arg repo "$GITHUB_REPOSITORY" \
+              '.[] | select(.head.sha == $sha) | (.head.repo.full_name == $repo and .head.ref == "experimental")')
+          state=failure
+          description='Only the experimental branch of this repository may merge into master.'
+          if [ "$eligible" = true ]; then
+            state=success
+            description='Promotion from this repository’s experimental branch.'
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f context='promotion/experimental-source' \
+            -f state="$state" \
+            -f description="$description" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          test "$state" = success

@@ -36,4 +36,6 @@ npm run build
 
 Run `npm ci`, `npm test` and `npm run build`. The package has no runtime npm dependencies. Distribute the `learnharness-wikipedia/dist/` layout, not `data/` or `node_modules/`.
 
+Push development changes to `experimental`. To promote a change, open a pull request from this repository’s `experimental` branch into `master`. Direct pushes to `master` are blocked.
+
 Plugin code: [AGPL-3.0-only](LICENSE). Article text: [Wikipedia’s content terms](https://en.wikipedia.org/wiki/Wikipedia:Copyrights).
