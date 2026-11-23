@@ -12,6 +12,7 @@
     "test": "node --test"
   },
   "devDependencies": {
-    "jsdom": "26.1.0"
+    "jsdom": "26.1.0",
+    "release-please": "17.11.2"
   }
 }

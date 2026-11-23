@@ -1,0 +1,57 @@
+name: Release Please
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-master
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # Process the latest protected tip if several promotions arrive in a burst.
+          ref: master
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Plan next version and release notes
+        id: plan
+        run: node scripts/release-plan.mjs
+      - name: Test and package the versioned plugin
+        if: steps.plan.outputs.version != ''
+        env:
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          npm test
+          npm run build
+          jq -e --arg version "$RELEASE_VERSION" '.version == $version' dist/manifest.json >/dev/null
+          stage=$(mktemp -d)
+          mkdir "$stage/learnharness-wikipedia"
+          cp -R dist "$stage/learnharness-wikipedia/"
+          (cd "$stage" && zip -qr "$GITHUB_WORKSPACE/learnharness-wikipedia.zip" learnharness-wikipedia)
+      - name: Publish release
+        if: steps.plan.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+          RELEASE_SHA: ${{ steps.plan.outputs.sha }}
+        run: |
+          gh release create "v$RELEASE_VERSION" learnharness-wikipedia.zip \
+            --target "$RELEASE_SHA" --title "Wikipedia for LearnHarness v$RELEASE_VERSION" \
+            --notes-file release-notes.md

@@ -20,6 +20,9 @@ jobs:
     steps:
       # Run the base branch's trusted workflow. Never check out or execute PR code.
       - name: Publish required promotion status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           # Statuses are tied to commits, not PRs. Fail closed when an

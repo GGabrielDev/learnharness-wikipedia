@@ -36,6 +36,8 @@ npm run build
 
 Run `npm ci`, `npm test` and `npm run build`. The package has no runtime npm dependencies. Distribute the `learnharness-wikipedia/dist/` layout, not `data/` or `node_modules/`.
 
-Push development changes to `experimental`. To promote a change, open a pull request from this repository’s `experimental` branch into `master`. Direct pushes to `master` are blocked.
+Push development changes to `experimental`. To promote a change, open a pull request from this repository’s `experimental` branch into `master`. Direct pushes to `master` are blocked. Use a merge commit to preserve the individual commit messages (or give a squash commit a Conventional Commit title).
+
+After each promotion, the [Release Please workflow](.github/workflows/release-please.yml) looks at Conventional Commits since the last reachable `vX.Y.Z` tag. `fix:` and `perf:` bump the patch, `feat:` bumps the minor version, and breaking changes (`!` or a `BREAKING CHANGE:` footer) bump the major version. The largest applicable bump wins. Docs and CI-only commits don’t produce a release. The workflow tests the plugin, stamps the distributed manifest, and publishes the release notes and `learnharness-wikipedia.zip`. It does not open a bot PR, push to `master`, or deploy to an existing install.
 
 Plugin code: [AGPL-3.0-only](LICENSE). Article text: [Wikipedia’s content terms](https://en.wikipedia.org/wiki/Wikipedia:Copyrights).
