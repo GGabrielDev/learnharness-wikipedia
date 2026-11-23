@@ -48,6 +48,7 @@ export function activate(ctx) {
   let item;
   let marked;
   let dialog;
+  let updateOptions;
   let preferences = readPreferences();
 
   function openOptions(anchor, route, composer) {
@@ -66,6 +67,7 @@ export function activate(ctx) {
         let rows;
         const publish = () => rows.update(schema());
         const set = patch => {
+          if (armed?.route !== route) return;
           preferences = { ...preferences, ...patch };
           try { window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(preferences)); } catch { /* prefer in-memory settings */ }
           publish();
@@ -83,9 +85,13 @@ export function activate(ctx) {
           { key: 'max', type: 'dropdown', label: 'Maximum searches', description: 'The most distinct search terms to try.', value: String(preferences.max), options: options(COUNTS.filter(n => n >= preferences.min)), onChange(value) { set({ max: Number(value) }); } },
           { key: 'perSearch', type: 'dropdown', label: 'Articles per search', description: 'How many unique articles to pull for each search term, before splitting files.', value: String(preferences.perSearch), options: options(ARTICLE_COUNTS), onChange(value) { set({ perSearch: Number(value) }); } },
           { key: 'split', type: 'toggle', label: 'Deconstruct files', description: 'Save the introduction and each main section as separate Markdown files. Subsections stay with their parent.', value: preferences.split, onChange(value) { set({ split: value }); } },
-        ] });
+        ].map(row => row.key === 'enabled' ? row : { ...row, disabled: armed?.route !== route }) });
         rows = ctx.ui.mountSettingsRows(fields, schema(), { signal });
-        return () => rows.dispose();
+        updateOptions = publish;
+        return () => {
+          if (updateOptions === publish) updateOptions = undefined;
+          rows.dispose();
+        };
       },
     }, { signal: ctx.signal });
   }
@@ -176,7 +182,7 @@ export function activate(ctx) {
       if (!Array.isArray(result?.paths) || !result.paths.length) throw new Error('Wikipedia did not return any attachment paths.');
       const references = result.paths.map(quotePath).join('\n');
       context.onAccepted(() => {
-        if (armed === selection) { armed = undefined; reconcile(); }
+        if (armed === selection) { armed = undefined; reconcile(); updateOptions?.(); }
       });
       return { ...input, content: { ...input.content, text: `${input.content.text}\n\n${references}` } };
     },

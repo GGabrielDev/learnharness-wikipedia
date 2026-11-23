@@ -21,7 +21,7 @@ function fixture(t, initialRoute = '/chat/chat_a') {
     accepted = undefined;
     return definition.intercept(input, { signal: controller.signal, sessionId, messages, onAccepted(next) { accepted = next; } });
   }
-  const cleanup = activate({
+  const context = {
     signal: controller.signal, app: { pathname: () => route },
     ui: {
       openDialog(props) {
@@ -45,10 +45,13 @@ function fixture(t, initialRoute = '/chat/chat_a') {
       assert.deepEqual([payload.min, payload.max, payload.split], [1, 3, true]);
       return { paths };
     },
-  });
+  };
+  let cleanup = activate(context);
   t.after(() => { cleanup(); dom.window.close(); Object.assign(globalThis, previous); });
   return {
-    input, paths, turn, cleanup, window,
+    input, paths, turn, window,
+    cleanup() { cleanup(); },
+    reactivate() { cleanup(); cleanup = activate(context); },
     get option() { return document.querySelector('.lh-wikipedia-menu-item'); },
     open() { this.option.click(); },
     close() { closeDialog(); },
@@ -82,6 +85,28 @@ test('native options are opt-in; original attachments are preserved and only acc
   assert.equal(f.option, null);
   assert.equal(f.anchor.hasAttribute('data-learnharness-wikipedia-armed'), false);
   assert.equal(document.querySelectorAll('button[role="menuitem"]').length, 2);
+});
+
+test('lookup settings are disabled when off and selections survive reactivation', t => {
+  const f = fixture(t);
+  const keys = ['min', 'max', 'perSearch', 'split'];
+  f.open();
+  assert.ok(keys.every(key => f.row(key).disabled));
+  assert.ok(!f.row('enabled').disabled);
+  f.row('enabled').onChange(true);
+  assert.ok(keys.every(key => !f.row(key).disabled));
+  f.row('max').onChange('8');
+  f.row('min').onChange('4');
+  f.row('perSearch').onChange('3');
+  f.row('split').onChange(false);
+  f.row('enabled').onChange(false);
+  assert.ok(keys.every(key => f.row(key).disabled));
+  f.close();
+  f.reactivate();
+  f.open();
+  assert.equal(f.row('enabled').value, false);
+  assert.ok(keys.every(key => f.row(key).disabled));
+  assert.deepEqual(keys.map(key => f.row(key).value), ['4', '8', '3', false]);
 });
 
 test('home selection carries across a native submit only into a fresh opening and does not leak to other chats', async t => {
