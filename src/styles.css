@@ -19,16 +19,21 @@
 
 .lh-wikipedia-menu-item::after {
   content: '';
-  display: block;
-  width: .75rem;
-  height: .75rem;
-  border: 1px solid currentColor;
-  border-radius: .2rem;
+  width: .4rem;
+  height: .4rem;
+  flex: none;
+  border-radius: 50%;
+  background: transparent;
 }
 
-.lh-wikipedia-menu-item[aria-checked='true']::after {
-  background: currentColor;
-  box-shadow: inset 0 0 0 2px var(--card);
+.lh-wikipedia-menu-item[data-enabled='true']::after {
+  background: var(--primary);
+}
+
+.lh-wikipedia-dialog-title {
+  margin: 0 1.75rem .5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 button[data-learnharness-wikipedia-armed] {

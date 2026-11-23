@@ -6,6 +6,19 @@ const COMPOSER = '[data-attachment-composer]';
 const ARMED = 'data-learnharness-wikipedia-armed';
 const OPENING_DRAFT = path => path === '/' || path === '/chat/new';
 const CHAT_ROUTE = /^\/chat\/([^/]+)$/;
+const SETTINGS_KEY = 'learnharness-wikipedia.preferences';
+const COUNTS = Array.from({ length: 10 }, (_, index) => index + 1);
+const ARTICLE_COUNTS = COUNTS.slice(0, 5);
+
+function readPreferences() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(SETTINGS_KEY));
+    if (COUNTS.includes(value?.min) && COUNTS.includes(value?.max) && value.min <= value.max && typeof value.split === 'boolean') {
+      return { min: value.min, max: value.max, split: value.split, perSearch: ARTICLE_COUNTS.includes(value.perSearch) ? value.perSearch : 1 };
+    }
+  } catch { /* storage is optional */ }
+  return { min: 1, max: 3, perSearch: 1, split: true };
+}
 
 function hasNativeOpening(route) {
   const id = CHAT_ROUTE.exec(route)?.[1];
@@ -34,10 +47,54 @@ export function activate(ctx) {
   let lastRoute = ctx.app.pathname();
   let item;
   let marked;
+  let dialog;
+  let preferences = readPreferences();
+
+  function openOptions(anchor, route, composer) {
+    if (dialog) return;
+    anchor.click(); // close the host paperclip popup before opening the modal
+    anchor.focus(); // host dialog restores focus to the surviving paperclip
+    dialog = ctx.ui.openDialog({
+      title: 'Wikipedia',
+      onClose() { dialog = undefined; },
+      content(container, signal) {
+        const heading = document.createElement('h2');
+        heading.className = 'lh-wikipedia-dialog-title';
+        heading.textContent = 'Wikipedia';
+        const fields = document.createElement('div');
+        container.append(heading, fields);
+        let rows;
+        const publish = () => rows.update(schema());
+        const set = patch => {
+          preferences = { ...preferences, ...patch };
+          try { window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(preferences)); } catch { /* prefer in-memory settings */ }
+          publish();
+        };
+        const options = values => values.map(value => ({ value: String(value), label: String(value) }));
+        const schema = () => ({ rows: [
+          { key: 'enabled', type: 'toggle', label: 'Enable Wikipedia', description: 'Look up sources for your next message. Search terms are sent to Wikipedia.', value: armed?.route === route, onChange(value) {
+            if (syncRoute() !== route) return;
+            if (value && !armed) armed = { route, composer };
+            if (!value) armed = undefined;
+            reconcile();
+            publish();
+          } },
+          { key: 'min', type: 'dropdown', label: 'Minimum searches', description: 'The fewest distinct search terms the model must find before looking up articles.', value: String(preferences.min), options: options(COUNTS.filter(n => n <= preferences.max)), onChange(value) { set({ min: Number(value) }); } },
+          { key: 'max', type: 'dropdown', label: 'Maximum searches', description: 'The most distinct search terms to try.', value: String(preferences.max), options: options(COUNTS.filter(n => n >= preferences.min)), onChange(value) { set({ max: Number(value) }); } },
+          { key: 'perSearch', type: 'dropdown', label: 'Articles per search', description: 'How many unique articles to pull for each search term, before splitting files.', value: String(preferences.perSearch), options: options(ARTICLE_COUNTS), onChange(value) { set({ perSearch: Number(value) }); } },
+          { key: 'split', type: 'toggle', label: 'Deconstruct files', description: 'Save the introduction and each main section as separate Markdown files. Subsections stay with their parent.', value: preferences.split, onChange(value) { set({ split: value }); } },
+        ] });
+        rows = ctx.ui.mountSettingsRows(fields, schema(), { signal });
+        return () => rows.dispose();
+      },
+    }, { signal: ctx.signal });
+  }
 
   function syncRoute() {
     const route = ctx.app.pathname();
     if (route !== lastRoute) {
+      dialog?.dispose();
+      dialog = undefined;
       const launchAge = Date.now() - (armed?.launchedAt ?? 0);
       if (armed?.route === lastRoute && OPENING_DRAFT(lastRoute) && launchAge < 120_000 && !OPENING_DRAFT(route) && hasNativeOpening(route)) {
         // Tentative handoff; only a fresh session's opening submission may use it.
@@ -76,7 +133,7 @@ export function activate(ctx) {
     }
     const menus = document.querySelectorAll(MENU);
     const menu = anchor && menus.length === 1 ? menus[0] : undefined;
-    if (!menu || menu.querySelectorAll('button[role="menuitem"]').length !== 2) {
+    if (!menu || menu.querySelectorAll('button[role="menuitem"]:not(.lh-wikipedia-menu-item)').length !== 2) {
       item?.remove();
       return;
     }
@@ -84,22 +141,20 @@ export function activate(ctx) {
       item?.remove();
       item = document.createElement('button');
       item.type = 'button';
-      item.setAttribute('role', 'menuitemcheckbox');
+      item.setAttribute('role', 'menuitem');
+      item.setAttribute('aria-haspopup', 'dialog');
       item.className = 'lh-wikipedia-menu-item';
-      item.textContent = 'Wikipedia';
-      item.title = 'Look up Wikipedia articles for your next message. Search terms go to Wikipedia.';
+      item.textContent = 'Wikipedia…';
       item.addEventListener('click', () => {
         const current = syncRoute();
         const composer = anchor.closest(COMPOSER);
         if (current !== route || !composer || !anchor.isConnected || anchor.getAttribute('aria-expanded') !== 'true') return;
-        if (armed?.route === route) armed = undefined;
-        else armed = { route, composer };
-        reconcile();
+        openOptions(anchor, route, composer);
       });
       menu.append(item);
     }
     const checked = String(armed?.route === route);
-    if (item.getAttribute('aria-checked') !== checked) item.setAttribute('aria-checked', checked);
+    if (item.dataset.enabled !== checked) item.dataset.enabled = checked;
   }
 
   const unregister = ctx.registerSubmissionInterceptor({
@@ -115,7 +170,7 @@ export function activate(ctx) {
         return;
       }
       context.signal.throwIfAborted();
-      const result = await ctx.call('attach', { text: input.content.text });
+      const result = await ctx.call('attach', { text: input.content.text, ...preferences });
       context.signal.throwIfAborted();
       if (armed !== selection || syncRoute() !== route) throw new Error('Wikipedia was toggled off. Send again without it.');
       if (!Array.isArray(result?.paths) || !result.paths.length) throw new Error('Wikipedia did not return any attachment paths.');
@@ -137,6 +192,8 @@ export function activate(ctx) {
     document.removeEventListener('submit', recordLaunch, true);
     document.removeEventListener('keydown', recordLaunch, true);
     unregister();
+    dialog?.dispose();
+    dialog = undefined;
     item?.remove();
     marked?.removeAttribute(ARMED);
     armed = undefined;

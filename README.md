@@ -1,6 +1,6 @@
 # Wikipedia for LearnHarness
 
-Enable **Wikipedia** in the paperclip menu before sending a message. LearnHarness’s configured **Cheap** model turns your request into up to three search phrases. The plugin looks up relevant English Wikipedia articles and attaches their plain text as regular local Markdown files. The tutor can read them alongside files you attach yourself.
+Enable **Wikipedia** in the paperclip menu before sending a message. LearnHarness’s configured **Cheap** model turns your request into search phrases. The plugin looks up relevant English Wikipedia articles and attaches their plain text as regular local Markdown files. The tutor can read them alongside files you attach yourself.
 
 ## Install
 
@@ -19,9 +19,11 @@ npm run build
 
 ## Use
 
-- In a new-session composer or a session’s free-text composer, click **Attach files → Wikipedia**. Click it again to turn it off. The highlight on the paperclip indicates it’s armed for the next message.
+- In a new-session or free-text composer, click **Attach files → Wikipedia…**. In the dialog, turn on **Enable Wikipedia**. The paperclip highlight indicates it’s armed for the next message.
+- **Minimum searches** and **Maximum searches** control how many distinct phrases the model plans (default **1–3**, configurable up to **10**). **Articles per search** controls how many different pages to pull for each phrase (default **1**, configurable up to **5**). Duplicate pages are skipped and the next-ranked match is tried; fewer usable articles may be available.
+- **Deconstruct files** is on by default. Each article’s introduction and main sections become separate Markdown files, with subsections kept inside their parent file. Turn it off for one file per article. The dialog remembers these three preferences locally; the enable switch is still per message.
 - Send your request as usual. The option resets after LearnHarness accepts the message. If lookup fails, the draft is kept: retry, or turn Wikipedia off and send without it. The option doesn’t run for quiz answers or other structured inputs.
-- **There is no plugin-imposed article size limit.** Each source includes the whole plain-text extract returned by Wikipedia, not just the introduction. The API’s extract does not include every rendered element (such as images or some tables). LearnHarness may read a large attachment in multiple chunks, just as with any other file.
+- **There is no plugin-imposed article size limit.** The plugin saves the whole plain-text extract returned by Wikipedia, not just the introduction. The API’s extract does not include every rendered element (such as images or some tables). LearnHarness may read a large attachment in multiple chunks, just as with any other file.
 - Files are saved in the plugin's `data/sources/` subdirectory so existing sessions can still refer to them. If you have enabled restricted **File access** in LearnHarness, allow that folder; the plugin does not bypass the native file policy. Deleting those files breaks old references.
 
 ## Network, privacy, and compatibility

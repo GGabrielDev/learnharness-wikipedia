@@ -40,19 +40,23 @@ test('backend uses the Cheap model and writes a native reference file with artic
     const params = url.searchParams;
     if (params.has('gsrsearch')) {
       queries.push(params.get('gsrsearch'));
-      return pages({ ns: 0, pageid: 100, index: 4 }, { ns: 0, pageid: 12, index: 0, pageprops: { disambiguation: '' } }, { ns: 0, pageid: 1, index: 2 });
+      return params.get('gsrsearch') === 'Earth plates' ? pages({ ns: 0, pageid: 1, index: 1 }) : pages({ ns: 0, pageid: 100, index: 4 }, { ns: 0, pageid: 12, index: 0, pageprops: { disambiguation: '' } }, { ns: 0, pageid: 1, index: 2 });
     }
     assert.equal(params.get('pageids'), '1');
     assert.equal(params.get('explaintext'), '1');
     assert.equal(params.has('exintro'), false);
     queries.push('article');
-    return pages({ pageid: 1, title: 'Plate tectonics', lastrevid: 43, extract: 'Article text. '.repeat(12_000) + 'Final paragraph.' });
+    assert.equal(params.get('exsectionformat'), 'wiki');
+    return pages({ pageid: 1, title: 'Plate tectonics', lastrevid: 43, extract: 'Lead.\n== Boundaries ==\n=== Subduction ===\n' + 'Article text. '.repeat(12_000) + 'Final paragraph.' });
   });
   const result = await ctx.attach({ text: 'Explain tectonics `/home/learner/notes.pdf`' });
   assert.deepEqual(queries, ['Plate tectonics', 'article', 'Earth plates']);
-  assert.equal(result.paths.length, 1);
-  assert.ok(result.paths[0].startsWith(join(dataDirectory, 'sources', 'lookup-')));
-  const document = await readFile(result.paths[0], 'utf8');
+  assert.equal(result.paths.length, 2);
+  assert.match(result.paths[0], /01 Introduction/);
+  assert.match(result.paths[1], /02 Boundaries/);
+  assert.ok(result.paths[1].startsWith(join(dataDirectory, 'sources', 'lookup-')));
+  const document = await readFile(result.paths[1], 'utf8');
+  assert.match(document, /=== Subduction ===/);
   assert.match(document, /# Plate tectonics\b/);
   assert.match(document, /en\.wikipedia\.org\/\?curid=1/);
   assert.match(document, /oldid=43/);
@@ -78,4 +82,23 @@ test('the client honors throttling and skips missing extracts', async () => {
   now += 1;
   assert.equal((await client.articles(['search']))[0].title, 'Matched');
   assert.equal(calls, 4);
+});
+
+test('articles per search is independent of query count, and duplicate results are backfilled before splitting', async () => {
+  const fetched = [];
+  const client = backend.createWikipediaClient({ userAgent: 'test', fetcher: async url => {
+    const params = url.searchParams;
+    if (params.has('gsrsearch')) {
+      const ids = params.get('gsrsearch') === 'first' ? [1, 2, 9] : [2, 1, 3, 4, 9];
+      return pages(...ids.map((pageid, index) => ({ pageid, ns: 0, index })));
+    }
+    assert.equal(params.has('exsectionformat'), false);
+    const pageid = Number(params.get('pageids'));
+    fetched.push(pageid);
+    return pages({ pageid, title: `Article ${pageid}`, extract: 'Lead\n== Main ==\nBody' });
+  }});
+  const articles = await client.articles(['first', 'second'], undefined, { perSearch: 2, split: false });
+  assert.deepEqual(fetched, [1, 2, 3, 4]);
+  assert.deepEqual(articles.map(page => page.pageid), fetched);
+  assert.throws(() => backend.parseQueries(message('["First", " FIRST "]'), 2, 4), /2 distinct/);
 });
